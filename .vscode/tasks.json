@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pln-fatec",
+      "type": "shell",
+      "command": ".venv\\Scripts\\activate && python -m pip install -r .\\requirements.txt && python -m spacy download pt_core_news_sm",
+      "presentation": {
+        "reveal": "silent",
+        "revealProblems": "onProblem",
+        "close": true
+      },
+      "windows": {
+        "command": ".\\.venv\\Scripts\\Activate.ps1; python -m pip install -r .\\requirements.txt",
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PYTHONUNBUFFERED": "1"
+          }
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

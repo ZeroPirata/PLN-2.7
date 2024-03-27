@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processed Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .container {
+            max-width: 100vw;
+            max-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        table {
+            flex: 1;
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed;
+            max-height: 50vh;
+            /* Altura máxima da tabela */
+            overflow: auto;
+            /* Habilita o overflow */
+        }
+
+        .scrollable {
+            overflow: auto;
+            /* Habilita o overflow */
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            word-wrap: break-word;
+            max-width: 500px;
+            /* Largura máxima da célula */
+        }
+
+        th {
+            background-color: #007bff;
+            color: #fff;
+            text-align: left;
+        }
+
+        tr:hover {
+            background-color: #f2f2f2;
+        }
+
+        /* Estilo para células com overflow-y */
+        .with-overflow {
+            height: 100px;
+            /* Altura fixa da célula */
+            overflow-y: auto;
+            /* Ativa o scroll vertical se o conteúdo exceder a altura */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Processed Data</h1>
+
+        <div class="form-group">
+            <label for="url">URL:</label>
+            <input type="text" id="url" name="url" value="url...">
+        </div>
+        <div class="form-group">
+            <label for="tag">Tag:</label>
+            <input type="text" id="tag" name="tag" value="div">
+        </div>
+        <div class="form-group">
+            <label for="section">Section:</label>
+            <input type="text" id="section" name="section" value=".content">
+        </div>
+        <div class="form-group">
+            <button onclick="fillTable()">Processar</button>
+        </div>
+
+        <div class="scrollable"> <!-- Container para o overflow -->
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th>Entrada</th>
+                        <th>Saída</th>
+                        <th>Tempo</th>
+                        <th>Etapa</th>
+                    </tr>
+                </thead>
+                <tbody id="data-body">
+                    <!-- Os dados serão renderizados aqui -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Função para fazer uma solicitação AJAX ao servidor FastAPI
+        async function fetchData(url, tag, section) {
+            const response = await fetch('http://localhost:8000', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    tag: tag,
+                    section: section
+                })
+            });
+
+            const data = await response.json();
+            return data;
+        }
+
+        async function fillTable() {
+            const url = document.getElementById('url').value;
+            const tag = document.getElementById('tag').value;
+            const section = document.getElementById('section').value;
+
+            const data = await fetchData(url, tag, section);
+            const tableBody = document.getElementById('data-body');
+            tableBody.innerHTML = '';
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+
+                // Transforma os arrays em strings
+                const entradaText = Array.isArray(item.entrada) ? JSON.stringify(item.entrada) : item.entrada;
+                const tempoText = Array.isArray(item.tempo) ? JSON.stringify(item.tempo) : item.tempo;
+                const etapaText = Array.isArray(item.etapa) ? JSON.stringify(item.etapa) : item.etapa;
+                const etapaSaida = Array.isArray(item.saida) ? JSON.stringify(item.saida) : item.saida;
+
+                row.appendChild(createCell(entradaText));
+                row.appendChild(createCell(etapaSaida));
+                row.appendChild(createCell(tempoText));
+                row.appendChild(createCell(etapaText));
+
+                tableBody.appendChild(row);
+            });
+        }
+
+        function createCell(text) {
+            const cell = document.createElement('td');
+            cell.textContent = text;
+            return cell;
+        }
+    </script>
+</body>
+
+</html>
