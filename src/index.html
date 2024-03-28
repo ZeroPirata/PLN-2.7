@@ -63,24 +63,22 @@
             border-collapse: collapse;
             margin-top: 20px;
             table-layout: fixed;
-            max-height: 50vh;
-            /* Altura máxima da tabela */
-            overflow: auto;
-            /* Habilita o overflow */
-        }
-
-        .scrollable {
-            overflow: auto;
-            /* Habilita o overflow */
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         th,
         td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            word-wrap: break-word;
+            padding: 12px 15px;
+            border-bottom: none;
             max-width: 500px;
-            /* Largura máxima da célula */
+            color: #333;
+            vertical-align: top;
+        }
+
+        .cell-content {
+            max-height: 500px;
+            overflow-y: auto;
         }
 
         th {
@@ -92,38 +90,31 @@
         tr:hover {
             background-color: #f2f2f2;
         }
-
-        /* Estilo para células com overflow-y */
-        .with-overflow {
-            height: 100px;
-            /* Altura fixa da célula */
-            overflow-y: auto;
-            /* Ativa o scroll vertical se o conteúdo exceder a altura */
-        }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1>Processed Data</h1>
+        <h1>Processed Data feiooo</h1>
 
         <div class="form-group">
             <label for="url">URL:</label>
-            <input type="text" id="url" name="url" value="url...">
+            <input type="text" id="url" name="url"
+                value="https://www.amazon.com.br/Galaxy-Grafite-C%C3%A2mera-Principal-Frontal/dp/B0156PZMU6">
         </div>
         <div class="form-group">
             <label for="tag">Tag:</label>
-            <input type="text" id="tag" name="tag" value="div">
+            <input type="text" id="tag" name="tag" value="span">
         </div>
         <div class="form-group">
             <label for="section">Section:</label>
-            <input type="text" id="section" name="section" value=".content">
+            <input type="text" id="section" name="section" value="cr-widget-FocalReviews">
         </div>
         <div class="form-group">
             <button onclick="fillTable()">Processar</button>
         </div>
 
-        <div class="scrollable"> <!-- Container para o overflow -->
+        <div class="scrollable">
             <table id="data-table">
                 <thead>
                     <tr>
@@ -141,7 +132,6 @@
     </div>
 
     <script>
-        // Função para fazer uma solicitação AJAX ao servidor FastAPI
         async function fetchData(url, tag, section) {
             const response = await fetch('http://localhost:8000', {
                 method: 'POST',
@@ -171,7 +161,6 @@
             data.forEach(item => {
                 const row = document.createElement('tr');
 
-                // Transforma os arrays em strings
                 const entradaText = Array.isArray(item.entrada) ? JSON.stringify(item.entrada) : item.entrada;
                 const tempoText = Array.isArray(item.tempo) ? JSON.stringify(item.tempo) : item.tempo;
                 const etapaText = Array.isArray(item.etapa) ? JSON.stringify(item.etapa) : item.etapa;
@@ -188,7 +177,10 @@
 
         function createCell(text) {
             const cell = document.createElement('td');
-            cell.textContent = text;
+            const cellContent = document.createElement('div');
+            cellContent.className = 'cell-content';
+            cellContent.textContent = text;
+            cell.appendChild(cellContent);
             return cell;
         }
     </script>

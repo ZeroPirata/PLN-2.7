@@ -3,5 +3,16 @@
   "pq": "por que",
   "pen": "caneta",
   "ram": "memória de acesso aleatório",
-  "rom": "memória somente leitura"
+  "rom": "memória somente leitura",
+  "ps": "play station",
+  "gb": "giga byte",
+  "mp": "megapixel",
+  "cnpj": "cadastro nacional da pessoa jurídica",
+  "cpf": "comprovante de situação cadastral",
+  "d": "de mais",
+  "hrs": "horas",
+  "hr": "hora",
+  "min": "minuto",
+  "mins": "minutos",
+  "gold": "ouro"
 }
