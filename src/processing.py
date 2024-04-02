@@ -1,5 +1,5 @@
 import re
-import httpx
+import requests
 import spacy
 import json
 import unicodedata
@@ -44,72 +44,93 @@ class Processing:
     @timing
     def __raspagem(self):
         """Fazer a leitura da url e pegar seu HTML."""
-        r = httpx.get(self._url)
+        r = requests.get(self._url)
         if r.status_code != 200:
             return ""
         return r.text
 
     @timing
     def __remocao_ruido(self):
-        """Remoção da parte do HTML e deixando apenas a sessão que contem o comentário dos usuários dentro da página"""
-        soup = BeautifulSoup(self._raspagem[0], "html.parser")
-        [s.extract() for s in soup(["iframe", "script"])]
-        session = soup.find(self._tag, self._section)
-        stripped_text = session.get_text()
-        return stripped_text
+            soup = BeautifulSoup(self._raspagem[0], "html.parser")
+            [s.extract() for s in soup(["iframe", "script"])]
+
+            session = soup.find(self._tag, self._section)
+
+            if session is None:
+                session = soup.find(self._tag, id=self._section)
+                print(session)
+
+            if session:
+                stripped_text = session.get_text()
+                stripped_text = re.sub(r"\s+", " ", stripped_text)
+                stripped_text = stripped_text.replace("\n", " ")
+                return stripped_text.strip()
+            else:
+                return "Sessão não encontrada ou não disponível"
 
     @timing
     def __tokenizacao_por_frases(self):
-        """Separação das frases que vem da remoção de ruido, onde ele vai devolver todas as frases separadas pelas pontuação"""
-        model_spacy = spacy.load("pt_core_news_sm")
-        word_tokens = model_spacy(self._remocao_ruido[0])
-        sentences = [
-            self.remove_special_characters(str(sent)) for sent in word_tokens.sents
-        ]
-        sentence_tokens = sentences
-        return sentence_tokens
+        try:
+            """Separação das frases que vem da remoção de ruido, onde ele vai devolver todas as frases separadas pelas pontuação"""
+            model_spacy = spacy.load("pt_core_news_sm")
+            word_tokens = model_spacy(self._remocao_ruido[0])
+            sentences = [
+                self.remove_special_characters(str(sent)) for sent in word_tokens.sents
+            ]
+            sentence_tokens = sentences
+            return sentence_tokens
+        except Exception as e:
+            print(e)
 
     @timing
     def __tokenizacao_por_palavras(self):
-        """Criação de Vetor de vetores com as palavras de cada frase"""
-        sentences = [lst for lst in self._tokenizacao_frases[0] if lst]
-        words_tokens = [frase.split() for frase in sentences]
-        return words_tokens
+        try:
+            """Criação de Vetor de vetores com as palavras de cada frase"""
+            sentences = [lst for lst in self._tokenizacao_frases[0] if lst]
+            words_tokens = [frase.split() for frase in sentences]
+            return words_tokens
+        except Exception as e:
+            print(e)
 
     @timing
     def __expansao_palavras(self):
-        """Função para expandir palavras e corrigir acentuação"""
-        expansion_dict: dict = self.load_expansion_dict(self._expansion_dict_file)
-        all_words = [word[:] for word in self._tokenizacao_palavras[0] if word]
-        expanded_tokenizacao_palavras = []
+        try:
+            """Função para expandir palavras e corrigir acentuação"""
+            expansion_dict: dict = self.load_expansion_dict(self._expansion_dict_file)
+            all_words = [word[:] for word in self._tokenizacao_palavras[0] if word]
+            expanded_tokenizacao_palavras = []
 
-        for words in all_words:
-            expanded_words = []
-            for i, word in enumerate(words):
-                expanded_word = self.expand_word(word.lower(), expansion_dict)
-                words[i] = expanded_word
-                expanded_words.append(expanded_word)
-            expanded_tokenizacao_palavras.append(expanded_words)
+            for words in all_words:
+                expanded_words = []
+                for i, word in enumerate(words):
+                    expanded_word = self.expand_word(word.lower(), expansion_dict)
+                    words[i] = expanded_word
+                    expanded_words.append(expanded_word)
+                expanded_tokenizacao_palavras.append(expanded_words)
 
-        return expanded_tokenizacao_palavras
+            return expanded_tokenizacao_palavras
+        except Exception as e:
+            print(e)
 
     @timing
     def __correcao_palavras(self):
-        portuguese = SpellChecker(language="pt")
-        all_words = self._expansao_palavras[0]
-        correcao_palavra_list = []
+        try:
+            portuguese = SpellChecker(language="pt")
+            all_words = self._expansao_palavras[0]
+            correcao_palavra_list = []
 
-        @lru_cache(maxsize=None)
-        def correcao_palavra(word):
-            correction_word = portuguese.correction(word)
-            return correction_word if correction_word is not None else word
+            @lru_cache(maxsize=None)
+            def correcao_palavra(word):
+                correction_word = portuguese.correction(word)
+                return correction_word if correction_word is not None else word
 
-        for words in all_words:
-            correcao_lista = [correcao_palavra(word) for word in words]
-            correcao_palavra_list.append(correcao_lista)
+            for words in all_words:
+                correcao_lista = [correcao_palavra(word) for word in words]
+                correcao_palavra_list.append(correcao_lista)
 
-        return correcao_palavra_list
-
+            return correcao_palavra_list
+        except Exception as e:
+            print(e)
 
     @staticmethod
     def load_expansion_dict(expansion_dict_file):
