@@ -4,7 +4,8 @@ import spacy
 import json
 import unicodedata
 
-
+import collections
+from nltk.corpus import mac_morpho
 from spellchecker import SpellChecker
 from bs4 import BeautifulSoup
 from functools import lru_cache, wraps
@@ -33,6 +34,9 @@ class Processing:
         self.__init_processing()
 
     def __init_processing(self):
+        WORDS = self.tokens(" ".join(mac_morpho.words()))
+        WORD_COUNTS = collections.Counter(WORDS)
+        self._words_counts = WORD_COUNTS
         """Inicialização das função de processamento dos dados"""
         self._raspagem = self.__raspagem()
         self._remocao_ruido = self.__remocao_ruido()
@@ -40,6 +44,7 @@ class Processing:
         self._tokenizacao_palavras = self.__tokenizacao_por_palavras()
         self._expansao_palavras = self.__expansao_palavras()
         self._correcao_palavras = self.__correcao_palavras()
+        self._correcao_palavras_lib = self.__correcao_palavras_lib()
 
     @timing
     def __raspagem(self):
@@ -51,22 +56,22 @@ class Processing:
 
     @timing
     def __remocao_ruido(self):
-            soup = BeautifulSoup(self._raspagem[0], "html.parser")
-            [s.extract() for s in soup(["iframe", "script"])]
+        soup = BeautifulSoup(self._raspagem[0], "html.parser")
+        [s.extract() for s in soup(["iframe", "script"])]
 
-            session = soup.find(self._tag, self._section)
+        session = soup.find(self._tag, self._section)
 
-            if session is None:
-                session = soup.find(self._tag, id=self._section)
-                print(session)
+        if session is None:
+            session = soup.find(self._tag, id=self._section)
+            print(session)
 
-            if session:
-                stripped_text = session.get_text()
-                stripped_text = re.sub(r"\s+", " ", stripped_text)
-                stripped_text = stripped_text.replace("\n", " ")
-                return stripped_text.strip()
-            else:
-                return "Sessão não encontrada ou não disponível"
+        if session:
+            stripped_text = session.get_text()
+            stripped_text = re.sub(r"\s+", " ", stripped_text)
+            stripped_text = stripped_text.replace("\n", " ")
+            return stripped_text.strip()
+        else:
+            return "Sessão não encontrada ou não disponível"
 
     @timing
     def __tokenizacao_por_frases(self):
@@ -115,6 +120,34 @@ class Processing:
     @timing
     def __correcao_palavras(self):
         try:
+            all_words = self._expansao_palavras[0]
+            correcao_palavra_list = []
+
+            def correcao_palavra(word):
+                attempts = 0
+                while attempts < 10:
+                    candidates = (
+                        self.known(self.edits0(word))
+                        or self.known(self.edits1(word))
+                        or [word]
+                    )
+                    corrected_word = max(candidates, key=self._words_counts.get)
+                    if corrected_word != word:
+                        return corrected_word
+                    attempts += 1
+                return word
+
+            for words in all_words:
+                correcao_lista = [correcao_palavra(word) for word in words]
+                correcao_palavra_list.append(correcao_lista)
+
+            return correcao_palavra_list
+        except Exception as e:
+            print(e)
+
+    @timing
+    def __correcao_palavras_lib(self):
+        try:
             portuguese = SpellChecker(language="pt")
             all_words = self._expansao_palavras[0]
             correcao_palavra_list = []
@@ -132,6 +165,35 @@ class Processing:
         except Exception as e:
             print(e)
 
+    def known(self, words):
+        return {w for w in words if w in self._words_counts}
+
+    def correct(self, word):
+        candidates = (
+            Processing.known(self.edits0(word))
+            or self.known(self.edits1(word))
+            or [word]
+        )
+        return max(candidates, key=self._words_counts.get)
+
+    @staticmethod
+    def edits0(word):
+        return {word}
+
+    @staticmethod
+    def edits1(word):
+        alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+        def splits(word):
+            return [(word[:i], word[i:]) for i in range(len(word) + 1)]
+
+        pairs = splits(word)
+        deletes = [a + b[1:] for (a, b) in pairs if b]
+        transposes = [a + b[1] + b[0] + b[2:] for (a, b) in pairs if len(b) > 1]
+        replaces = [a + c + b[1:] for (a, b) in pairs for c in alphabet if b]
+        inserts = [a + c + b for (a, b) in pairs for c in alphabet]
+        return set(deletes + transposes + replaces + inserts)
+
     @staticmethod
     def load_expansion_dict(expansion_dict_file):
         """Carrega o dicionário de expansão de palavras do arquivo"""
@@ -146,6 +208,10 @@ class Processing:
             return get_value
         else:
             return word
+
+    @staticmethod
+    def tokens(text):
+        return re.findall("[a-z]+", text.lower())
 
     @staticmethod
     def remove_special_characters(text):
@@ -187,9 +253,14 @@ class Processing:
                 self._expansao_palavras,
             ),
             (
-                "Correção de caracteres incorretos",
+                "Correção de caracteres incorretos sem biblioteca",
                 self._expansao_palavras[0],
                 self._correcao_palavras,
+            ),
+            (
+                "Correção de caracteres incorretos com biblioteca",
+                self._expansao_palavras[0],
+                self._correcao_palavras_lib,
             ),
         ]
 
