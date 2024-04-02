@@ -122,20 +122,9 @@ class Processing:
         try:
             all_words = self._expansao_palavras[0]
             correcao_palavra_list = []
-
             def correcao_palavra(word):
-                attempts = 0
-                while attempts < 10:
-                    candidates = (
-                        self.known(self.edits0(word))
-                        or self.known(self.edits1(word))
-                        or [word]
-                    )
-                    corrected_word = max(candidates, key=self._words_counts.get)
-                    if corrected_word != word:
-                        return corrected_word
-                    attempts += 1
-                return word
+                candidates = self.known(self.edits0(word)) or self.known(self.edits1(word)) or [word]
+                return max(candidates, key=self._words_counts.get)
 
             for words in all_words:
                 correcao_lista = [correcao_palavra(word) for word in words]
@@ -260,8 +249,8 @@ class Processing:
             (
                 "Correção de caracteres incorretos com biblioteca",
                 self._expansao_palavras[0],
-                self._correcao_palavras_lib,
-            ),
+                self._correcao_palavras_lib
+            )
         ]
 
         return [
