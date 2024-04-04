@@ -18,5 +18,5 @@ def version():
 
 
 @router.post("/")
-def processing(req: RequestHtml):
-    return Processing(url=req.url, section=req.section, tag=req.tag).processing()
+async def processing(req: RequestHtml):
+    return await Processing(url=req.url, section=req.section, tag=req.tag).processing()

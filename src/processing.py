@@ -1,5 +1,6 @@
+import asyncio
 import re
-import requests
+import httpx
 import spacy
 import json
 import unicodedata
@@ -14,9 +15,9 @@ from time import perf_counter
 
 def timing(func):
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         start_time = perf_counter()
-        result = func(*args, **kwargs)
+        result = await func(*args, **kwargs)
         end_time = perf_counter()
         elapsed_time_ms = round(((end_time - start_time) * 1000), 2)
         print(f"A função '{func.__name__}' foi executada em: {elapsed_time_ms} ms")
@@ -31,31 +32,31 @@ class Processing:
         self._section = section
         self._tag = tag
         self._expansion_dict_file = "src/words.json"
-        self.__init_processing()
 
-    def __init_processing(self):
+    async def __init_processing(self):
         WORDS = self.tokens(" ".join(mac_morpho.words()))
         WORD_COUNTS = collections.Counter(WORDS)
         self._words_counts = WORD_COUNTS
         """Inicialização das função de processamento dos dados"""
-        self._raspagem = self.__raspagem()
-        self._remocao_ruido = self.__remocao_ruido()
-        self._tokenizacao_frases = self.__tokenizacao_por_frases()
-        self._tokenizacao_palavras = self.__tokenizacao_por_palavras()
-        self._expansao_palavras = self.__expansao_palavras()
-        self._correcao_palavras = self.__correcao_palavras()
-        self._correcao_palavras_lib = self.__correcao_palavras_lib()
+        self._raspagem = await self.__raspagem()
+        self._remocao_ruido = await self.__remocao_ruido()
+        self._tokenizacao_frases = await self.__tokenizacao_por_frases()
+        self._tokenizacao_palavras = await self.__tokenizacao_por_palavras()
+        self._expansao_palavras = await self.__expansao_palavras()
+        self._correcao_palavras = await self.__correcao_palavras()
+        self._correcao_palavras_lib = await self.__correcao_palavras_lib()
 
     @timing
-    def __raspagem(self):
-        """Fazer a leitura da url e pegar seu HTML."""
-        r = requests.get(self._url)
-        if r.status_code != 200:
-            return ""
-        return r.text
+    async def __raspagem(self):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(self._url)
+            if response.status_code == 200:
+                return response.content
+            else:
+                return None
 
     @timing
-    def __remocao_ruido(self):
+    async def __remocao_ruido(self):
         soup = BeautifulSoup(self._raspagem[0], "html.parser")
         [s.extract() for s in soup(["iframe", "script"])]
 
@@ -63,7 +64,6 @@ class Processing:
 
         if session is None:
             session = soup.find(self._tag, id=self._section)
-            print(session)
 
         if session:
             stripped_text = session.get_text()
@@ -71,10 +71,12 @@ class Processing:
             stripped_text = stripped_text.replace("\n", " ")
             return stripped_text.strip()
         else:
-            return "Sessão não encontrada ou não disponível"
+            stripped_text = soup.get_text()
+            stripped_text = re.sub(r"[\r|\n|\r\n]", "\n", stripped_text)
+            return stripped_text
 
     @timing
-    def __tokenizacao_por_frases(self):
+    async def __tokenizacao_por_frases(self):
         try:
             """Separação das frases que vem da remoção de ruido, onde ele vai devolver todas as frases separadas pelas pontuação"""
             model_spacy = spacy.load("pt_core_news_sm")
@@ -88,7 +90,7 @@ class Processing:
             print(e)
 
     @timing
-    def __tokenizacao_por_palavras(self):
+    async def __tokenizacao_por_palavras(self):
         try:
             """Criação de Vetor de vetores com as palavras de cada frase"""
             sentences = [lst for lst in self._tokenizacao_frases[0] if lst]
@@ -98,7 +100,7 @@ class Processing:
             print(e)
 
     @timing
-    def __expansao_palavras(self):
+    async def __expansao_palavras(self):
         try:
             """Função para expandir palavras e corrigir acentuação"""
             expansion_dict: dict = self.load_expansion_dict(self._expansion_dict_file)
@@ -118,24 +120,7 @@ class Processing:
             print(e)
 
     @timing
-    def __correcao_palavras(self):
-        try:
-            all_words = self._expansao_palavras[0]
-            correcao_palavra_list = []
-            def correcao_palavra(word):
-                candidates = self.known(self.edits0(word)) or self.known(self.edits1(word)) or [word]
-                return max(candidates, key=self._words_counts.get)
-
-            for words in all_words:
-                correcao_lista = [correcao_palavra(word) for word in words]
-                correcao_palavra_list.append(correcao_lista)
-
-            return correcao_palavra_list
-        except Exception as e:
-            print(e)
-
-    @timing
-    def __correcao_palavras_lib(self):
+    async def __correcao_palavras_lib(self):
         try:
             portuguese = SpellChecker(language="pt")
             all_words = self._expansao_palavras[0]
@@ -154,14 +139,50 @@ class Processing:
         except Exception as e:
             print(e)
 
-    def known(self, words):
-        return {w for w in words if w in self._words_counts}
+    @timing
+    async def __correcao_palavras(self):
+        try:
+            all_words = self._expansao_palavras[0]
+            correcao_palavra_list = []
+
+            async def correcao_palavra(word, max_dist=2):
+                best_word = word
+                best_count = self._words_counts.get(word, 0)
+                for dist in range(1, max_dist + 1):
+                    for edit in self.edits_up_to_n(word, dist):
+                        count = self._words_counts.get(edit, 0)
+                        if count > best_count:
+                            best_word = edit
+                            best_count = count
+                if best_word is not None:
+                    return best_word
+                else:
+                    return word
+
+            async def correcao_palavras_para_uma_lista(words):
+                return await asyncio.gather(*[correcao_palavra(word) for word in words])
+
+            correcao_palavra_list = await asyncio.gather(
+                *[correcao_palavras_para_uma_lista(words) for words in all_words]
+            )
+
+            return correcao_palavra_list
+        except Exception as e:
+            print(f"Correção de palavras: {e}")
+
+    async def generate_candidates(self, word, max_dist):
+        candidates = await self.known(self.edits0(word))
+        for dist in range(1, max_dist + 1):
+            for edit in self.edits_up_to_n(word, dist):
+                candidates.append(edit)
+        return candidates
+
+    async def known(self, words):
+        return [w for w in words if w in self._words_counts]
 
     def correct(self, word):
         candidates = (
-            Processing.known(self.edits0(word))
-            or self.known(self.edits1(word))
-            or [word]
+            self.known(self.edits0(word)) or self.known(self.edits1(word)) or [word]
         )
         return max(candidates, key=self._words_counts.get)
 
@@ -170,18 +191,27 @@ class Processing:
         return {word}
 
     @staticmethod
-    def edits1(word):
-        alphabet = "abcdefghijklmnopqrstuvwxyz"
-
-        def splits(word):
-            return [(word[:i], word[i:]) for i in range(len(word) + 1)]
-
-        pairs = splits(word)
-        deletes = [a + b[1:] for (a, b) in pairs if b]
-        transposes = [a + b[1] + b[0] + b[2:] for (a, b) in pairs if len(b) > 1]
-        replaces = [a + c + b[1:] for (a, b) in pairs for c in alphabet if b]
-        inserts = [a + c + b for (a, b) in pairs for c in alphabet]
+    def edits1(palavra):
+        letras = "abcdefghijklmnopqrstuvwxyz"
+        splits = [(palavra[:i], palavra[i:]) for i in range(len(palavra) + 1)]
+        deletes = [L + R[1:] for L, R in splits if R]
+        transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]
+        replaces = [L + c + R[1:] for L, R in splits if R for c in letras]
+        inserts = [L + c + R for L, R in splits for c in letras]
         return set(deletes + transposes + replaces + inserts)
+
+    @staticmethod
+    def edits_up_to_n(word, n):
+        if n == 1:
+            return Processing.edits1(word)
+        else:
+            edits = Processing.edits1(word)
+            for _ in range(n - 1):
+                new_edits = set()
+                for edit in edits:
+                    new_edits.update(Processing.edits1(edit))
+                edits.update(new_edits)
+            return edits
 
     @staticmethod
     def load_expansion_dict(expansion_dict_file):
@@ -222,7 +252,9 @@ class Processing:
             "etapa": etapa,
         }
 
-    def processing(self):
+    async def processing(self):
+        await self.__init_processing()
+
         steps = [
             ("Raspagem", self._url, self._raspagem),
             ("Remoção de ruído", self._raspagem[0], self._remocao_ruido),
@@ -249,8 +281,8 @@ class Processing:
             (
                 "Correção de caracteres incorretos com biblioteca",
                 self._expansao_palavras[0],
-                self._correcao_palavras_lib
-            )
+                self._correcao_palavras_lib,
+            ),
         ]
 
         return [
